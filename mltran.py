@@ -42,6 +42,10 @@ def make_request(word):
     results_xpath = '/html/body/table/tr/td[2]/table/tr/td/table/tr[2]/td/table/tr/td[2]/table[2]'
 
     results = [entry.text.encode('utf-8') + '\n' for entry in code.xpath(results_xpath + '/tr/td[2]/a')]
+
+    with open('unsorted_queries.txt', mode='a') as query_store:
+        query_store.write(word + '\n')
+
     print_to_less(results)
     # print(etree.tostring(entry, pretty_print=True, method="html", encoding='unicode'))
 
