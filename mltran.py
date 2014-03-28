@@ -47,7 +47,11 @@ def make_request(word):
 
 
 def main():
-    word = sys.argv[1]
+    if len(sys.argv) == 1:
+        print("Usage:\n\t" + sys.argv[0] + " <word>")
+        exit(0)
+
+    word = ' '.join(sys.argv[1:])
     make_request(word)
 
 
