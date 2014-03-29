@@ -13,39 +13,45 @@ class LessPipe:
     def __init__(self):
         self.p = Popen('less', stdin=PIPE)
 
-    def write(self, strings):
-        """
-        Print list or one string into less pipe
-        """
-        if isinstance(strings, list):
-            strings = '\n'.join(strings)
-        self.p.stdin.write(strings)
+    def writelines(self, strings):
+        self.write('\n'.join(strings))
+
+    def write(self, string):
+        self.p.stdin.write(string)
 
     def close(self):
         self.p.stdin.close()
         self.p.wait()
 
 
+class Mltran:
+    def __init__(self, word, log=True, log_filename='unsorted_queries.txt'):
+        if log:
+            with open(log_filename, mode='a') as query_store:
+                query_store.write(word + '\n')
+
+        request_address = 'http://www.multitran.ru/c/m.exe'
+        self.response = requests.get(request_address, params={'s': word})
+
+    def url(self):
+        return self.response.url
+
+    def text(self):
+        return self.response.text.encode('cp1252').decode('cp1251')
+
+    def results(self):
+        code = etree.HTML(self.text())
+        results_xpath = '/html/body/table/tr/td[2]/table/tr/td/table/tr[2]/td/table/tr/td[2]/table[2]'
+        return (entry.text.encode('utf-8') for entry in code.xpath(results_xpath + '/tr/td[2]/a'))
+
+
 def make_request(word):
-    request_address = 'http://www.multitran.ru/c/m.exe'
-    response = requests.get(request_address, params={'s': word})
-    print(response.url)
-    code = etree.HTML(response.text.encode('cp1252').decode('cp1251'))
-    # doc = etree.ElementTree(code)
-    #
-    # result = etree.tostring(code, pretty_print=True, method="html", encoding='unicode')
-    # print(result)
-
-    results_xpath = '/html/body/table/tr/td[2]/table/tr/td/table/tr[2]/td/table/tr/td[2]/table[2]'
-
-    results = [entry.text.encode('utf-8') for entry in code.xpath(results_xpath + '/tr/td[2]/a')]
-
-    with open('unsorted_queries.txt', mode='a') as query_store:
-        query_store.write(word + '\n')
+    request = Mltran(word)
+    print(request.url())
 
     with contextlib.closing(LessPipe()) as less:
-        less.write(response.url + '\n')
-        less.write(results)
+        less.write(request.url() + '\n')
+        less.writelines(request.results())
 
 
 def main():
