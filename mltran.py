@@ -1,32 +1,29 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
+import contextlib
 
 import sys
 import requests
 
 from lxml import etree
-
-
 from subprocess import Popen, PIPE
-import errno
 
 
-def print_to_less(strings):
-    p = Popen('less', stdin=PIPE)
-    for s in strings:
-        try:
-            p.stdin.write(s)
-        except IOError as e:
-            if e.errno == errno.EPIPE or e.errno == errno.EINVAL:
-                # Stop loop on "Invalid pipe" or "Invalid argument".
-                # No sense in continuing with broken pipe.
-                break
-            else:
-                # Raise any other error.
-                raise
+class LessPipe:
+    def __init__(self):
+        self.p = Popen('less', stdin=PIPE)
 
-    p.stdin.close()
-    p.wait()
+    def write(self, strings):
+        """
+        Print list or one string into less pipe
+        """
+        if isinstance(strings, list):
+            strings = '\n'.join(strings)
+        self.p.stdin.write(strings)
+
+    def close(self):
+        self.p.stdin.close()
+        self.p.wait()
 
 
 def make_request(word):
@@ -41,13 +38,14 @@ def make_request(word):
 
     results_xpath = '/html/body/table/tr/td[2]/table/tr/td/table/tr[2]/td/table/tr/td[2]/table[2]'
 
-    results = [entry.text.encode('utf-8') + '\n' for entry in code.xpath(results_xpath + '/tr/td[2]/a')]
+    results = [entry.text.encode('utf-8') for entry in code.xpath(results_xpath + '/tr/td[2]/a')]
 
     with open('unsorted_queries.txt', mode='a') as query_store:
         query_store.write(word + '\n')
 
-    print_to_less(results)
-    # print(etree.tostring(entry, pretty_print=True, method="html", encoding='unicode'))
+    with contextlib.closing(LessPipe()) as less:
+        less.write(response.url + '\n')
+        less.write(results)
 
 
 def main():
