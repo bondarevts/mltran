@@ -22,7 +22,11 @@ class LessPipe:
         self.write('\n'.join(strings))
 
     def write(self, string):
-        self.p.stdin.write(string)
+        self.p.stdin.write(string.encode('utf8'))
+
+    def writeline(self, string=u''):
+        self.write(string)
+        self.write(u'\n')
 
     def close(self):
         self.p.stdin.close()
@@ -32,7 +36,24 @@ class LessPipe:
 Translation = namedtuple('Translation', ['word', 'translation_items'])
 Translated = namedtuple('Translated', ['value', 'part_of_speech'])
 TranslationItem = namedtuple('TranslationItem', ['group', 'words'])
-Word = namedtuple('Word', ['value', 'context', 'comment', 'author'])
+
+
+class Word:
+    def __init__(self, value, context=None, comment=None, author=None):
+        self.value = value
+        self.context = context
+        self.comment = comment
+        self.author = author
+
+    def __unicode__(self):
+        result = self.value
+        if self.context:
+            result += u' [' + self.context.strip(u' ()') + u'] '
+        if self.comment:
+            result += u' /* ' + self.comment.strip(u' ()') + u' */ '
+        if self.author:
+            result += u' @' + self.author
+        return result
 
 
 class Mltran:
@@ -43,12 +64,13 @@ class Mltran:
 
         request_address = 'http://www.multitran.ru/c/m.exe'
         self.response = requests.get(request_address, params={'s': word})
+        self.response.encoding = 'cp1251'
 
     def url(self):
         return self.response.url
 
     def text(self):
-        return self.response.text.encode('cp1252').decode('cp1251')
+        return self.response.text
 
     @staticmethod
     def is_new_word_row(elem):
@@ -56,15 +78,35 @@ class Mltran:
 
     @staticmethod
     def get_translated_from_row(row):
-        return Translated(row.find('td[@bgcolor]/a[1]').text, row.find('td[@bgcolor]/em').text.encode('utf-8'))
+        return Translated(row.find('td[@bgcolor]/a[1]').text, row.find('td[@bgcolor]/em').text)
 
     @staticmethod
     def get_group(row):
-        return row.find('td[1]/a').get('title').encode('utf-8')
+        return row.find('td[1]/a').get('title')
 
     @staticmethod
     def get_translations(row):
-        return [translation.text.encode('utf-8') for translation in row.findall('td[2]/a')]
+        value = context = comment = author = None
+        words = []
+        for elem in row.xpath('td[2]//*'):
+            if elem.tag == 'a':
+                if '&&UserName=' in elem.get('href'):
+                    author = elem.find('i').text
+                elif elem.get('target') == '_blank':
+                    pass
+                else:
+                    if value:
+                        words.append(Word(value, context, comment, author))
+                        context = comment = author = None
+                    value = elem.text
+
+            elif elem.tag == 'span' and elem.get('style') == 'color:gray':
+                text = elem.text
+                if text != ' (' and text != ')':
+                    context = text
+        if value:
+            words.append(Word(value, context, comment, author))
+        return words
 
     def results(self):
         code = etree.HTML(self.text())
@@ -87,16 +129,16 @@ class Mltran:
 def make_request(word):
     request = Mltran(word, log=False)
     print(request.url())
-
     with contextlib.closing(LessPipe()) as less:
         less.write(request.url() + '\n')
         for result in request.results():
-            less.write('===== {}, {} =====\n'.format(result.word.value, result.word.part_of_speech))
+
+            less.write(u'===== {}, {} =====\n'.format(unicode(result.word.value, 'utf8'), result.word.part_of_speech))
             for group in result.translation_items:
-                less.write('\tГруппа: {}\n'.format(group.group))
+                less.write(u'\tКатегория: {}\n'.format(group.group))
                 for translation in group.words:
-                    less.write(translation + '\n')
-                less.write('\n')
+                    less.writeline(unicode(translation))
+                less.writeline()
 
 
 def main():
