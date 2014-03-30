@@ -105,6 +105,9 @@ class Mltran:
                 elif elem.get('target') == '_blank':
                     link = Link(description=elem.find('i').text, url=elem.get('href'))
                 else:
+                    if value:
+                        words.append(Word(value, prev_context, context, comment, author, link))
+                        prev_context = context = comment = author = link = None
                     value = elem.text
 
             elif elem.tag == 'span':
