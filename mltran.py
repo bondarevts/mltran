@@ -14,6 +14,52 @@ def xml_element_to_string(elem):
     return etree.tostring(elem, pretty_print=True, method="html", encoding='unicode')
 
 
+phonetic_alphabet = {
+    u'[': u'[',
+    u']': u']',
+    u'34': u'\u02cf',
+    u'39': u'\u00b4',
+    u'40': u'(',
+    u'41': u')',
+    u'58': u':',
+    u'65': u'\u028c',
+    u'68': u'\u00f0',
+    u'69': u'\u025c',
+    u'73': u'\u026a',
+    u'78': u'\u014b',
+    u'79': u'\u0254',
+    u'80': u'\u0252',
+    u'81': u'\u0251',
+    u'83': u'\u0283',
+    u'84': u'\u0275',  # ? u'\u0298'
+    u'86': u'\u028b',
+    u'90': u'\u0292',
+    u'97': u'a',
+    u'98': u'b',
+    u'100': u'd',
+    u'101': u'e',
+    u'102': u'f',
+    u'103': u'g',
+    u'104': u'h',
+    u'105': u'i',
+    u'106': u'j',
+    u'107': u'k',
+    u'108': u'l',
+    u'109': u'm',
+    u'110': u'n',
+    u'112': u'p',
+    u'113': u'\u0259',
+    u'114': u'r',
+    u'115': u's',
+    u'116': u't',
+    u'117': u'u',
+    u'118': u'v',
+    u'119': u'w',
+    u'120': u'\u00e6',
+    u'122': u'z'
+}
+
+
 class LessPipe:
     def __init__(self):
         self.p = Popen('less', stdin=PIPE)
@@ -34,10 +80,23 @@ class LessPipe:
 
 
 Translation = namedtuple('Translation', ['word', 'translation_items'])
-Translated = namedtuple('Translated', ['value', 'part_of_speech'])
 TranslationItem = namedtuple('TranslationItem', ['group', 'words'])
 Link = namedtuple('Link', ['description', 'url'])
 Comment = namedtuple('Comment', ['text', 'author'])
+
+
+class Translated:
+    def __init__(self, value, part_of_speech, phonetic):
+        self.value = value
+        self.part_of_speech = part_of_speech
+        self.phonetic = phonetic
+
+    def __unicode__(self):
+        result = u'====== ' + self.value
+        if self.phonetic:
+            result += u' ' + self.phonetic
+        result += u' ' + self.part_of_speech + u' ====='
+        return result
 
 
 class Word:
@@ -86,8 +145,23 @@ class Mltran:
         return elem.find('td[@bgcolor]') is not None
 
     @staticmethod
+    def get_phonetic(row):
+        result = u''
+        for img in row.findall('td/img'):
+            symbol = img.get('src')[5:-4]
+            if symbol in phonetic_alphabet:
+                result += phonetic_alphabet[symbol]
+            else:
+                sys.stderr.write('symbol ' + symbol + ' was not found in phonetic table')
+        if result:
+            return result
+
+    @staticmethod
     def get_translated_from_row(row):
-        return Translated(row.find('td[@bgcolor]/a[1]').text, row.find('td[@bgcolor]/em').text)
+        value = row.find('td[@bgcolor]/a[1]').text
+        part_of_speech = row.find('td[@bgcolor]/em').text
+        phonetic = Mltran.get_phonetic(row)
+        return Translated(value, part_of_speech, phonetic)
 
     @staticmethod
     def get_category(row):
@@ -159,8 +233,7 @@ def make_request(word):
     with contextlib.closing(LessPipe()) as less:
         less.write(request.url() + '\n')
         for result in request.results():
-
-            less.write(u'===== {}, {} =====\n'.format(result.word.value, result.word.part_of_speech))
+            less.writeline(result.word)
             for group in result.translation_items:
                 less.write(u'\tКатегория: {}\n'.format(group.group))
                 for translation in group.words:
