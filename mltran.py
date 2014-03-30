@@ -37,6 +37,7 @@ Translation = namedtuple('Translation', ['word', 'translation_items'])
 Translated = namedtuple('Translated', ['value', 'part_of_speech'])
 TranslationItem = namedtuple('TranslationItem', ['group', 'words'])
 Link = namedtuple('Link', ['description', 'url'])
+Comment = namedtuple('Comment', ['text', 'author'])
 
 
 class Word:
@@ -56,7 +57,7 @@ class Word:
         if self.context:
             result += u' [' + self.context.strip(u' ()') + u']'
         if self.comment:
-            result += u' /* ' + self.comment.strip(u' ()') + u' */'
+            result += u' /* ' + self.comment.text.strip(u' ()') + u' @' + self.comment.author + u' */'
         if self.link:
             result += u' {' + self.link.description + u' (' + self.link.url + u')}'
         if self.author:
@@ -106,7 +107,7 @@ class Mltran:
             if elem.find('tr/td[@bgcolor]') is not None:
                 break
             if elem.tag == 'a':
-                if '&&UserName=' in elem.get('href'):
+                if not comment and '&&UserName=' in elem.get('href'):
                     author = elem.find('i').text
                 elif elem.get('target') == '_blank':
                     link = Link(description=elem.find('i').text, url=elem.get('href'))
@@ -128,6 +129,8 @@ class Mltran:
                     if value:
                         words.append(Word(value, prev_context, context, comment, author, link))
                         value = prev_context = context = comment = author = link = None
+                elif elem.get('style') == 'color:rgb(60, 179, 113)':
+                    comment = Comment(elem.text, elem.find('a/i').text)
         if value:
             words.append(Word(value, prev_context, context, comment, author, link))
         return words
