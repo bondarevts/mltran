@@ -93,6 +93,12 @@ class Mltran:
         return row.find('td[1]/a').get('title') or row.find('td[1]/a/i').text  # if first == None return second
 
     @staticmethod
+    def extend_context(context, text):
+        if context:
+            return context + u'; ' + text
+        return text
+
+    @staticmethod
     def get_word_translations(row):
         value = prev_context = context = comment = author = link = None
         words = []
@@ -115,10 +121,10 @@ class Mltran:
                     text = elem.text
                     if text != ' (' and text != ')':
                         if value:
-                            context = text
+                            context = Mltran.extend_context(context, text)
                         else:
-                            prev_context = text
-                elif elem.get('style') == 'color:black':  # and text == ';  '
+                            prev_context = Mltran.extend_context(prev_context, text)
+                elif elem.get('style') == 'color:black' and elem.text == ';  ':
                     if value:
                         words.append(Word(value, prev_context, context, comment, author, link))
                         value = prev_context = context = comment = author = link = None
