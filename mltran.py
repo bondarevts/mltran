@@ -40,23 +40,27 @@ Link = namedtuple('Link', ['description', 'url'])
 
 
 class Word:
-    def __init__(self, value, context=None, comment=None, author=None, link=None):
+    def __init__(self, value, prev_context=None, context=None, comment=None, author=None, link=None):
         self.value = value
+        self.prev_context = prev_context
         self.context = context
         self.comment = comment
         self.author = author
         self.link = link
 
     def __unicode__(self):
-        result = self.value
+        result = u''
+        if self.prev_context:
+            result += u'[' + self.prev_context.strip(u' ()') + u'] '
+        result += self.value
         if self.context:
-            result += u' [' + self.context.strip(u' ()') + u'] '
+            result += u' [' + self.context.strip(u' ()') + u']'
         if self.comment:
-            result += u' /* ' + self.comment.strip(u' ()') + u' */ '
-        if self.author:
-            result += u' @' + self.author
+            result += u' /* ' + self.comment.strip(u' ()') + u' */'
         if self.link:
             result += u' {' + self.link.description + u' (' + self.link.url + u')}'
+        if self.author:
+            result += u' @' + self.author
         return result
 
 
@@ -90,30 +94,33 @@ class Mltran:
 
     @staticmethod
     def get_word_translations(row):
-        value = context = comment = author = link = None
+        value = prev_context = context = comment = author = link = None
         words = []
         for elem in row.xpath('td[2]//*'):
             if elem.find('tr/td[@bgcolor]') is not None:
-                if value:
-                    words.append(Word(value, context, comment, author, link))
-                return words
+                break
             if elem.tag == 'a':
                 if '&&UserName=' in elem.get('href'):
                     author = elem.find('i').text
                 elif elem.get('target') == '_blank':
                     link = Link(description=elem.find('i').text, url=elem.get('href'))
                 else:
-                    if value:
-                        words.append(Word(value, context, comment, author, link))
-                        context = comment = author = link = None
                     value = elem.text
 
-            elif elem.tag == 'span' and elem.get('style') == 'color:gray':
-                text = elem.text
-                if text != ' (' and text != ')':
-                    context = text
+            elif elem.tag == 'span':
+                if elem.get('style') == 'color:gray':
+                    text = elem.text
+                    if text != ' (' and text != ')':
+                        if value:
+                            context = text
+                        else:
+                            prev_context = text
+                elif elem.get('style') == 'color:black':  # and text == ';  '
+                    if value:
+                        words.append(Word(value, prev_context, context, comment, author, link))
+                        value = prev_context = context = comment = author = link = None
         if value:
-            words.append(Word(value, context, comment, author, link))
+            words.append(Word(value, prev_context, context, comment, author, link))
         return words
 
     def results(self):
