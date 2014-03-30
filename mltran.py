@@ -22,7 +22,7 @@ class LessPipe:
         self.write('\n'.join(strings))
 
     def write(self, string):
-        self.p.stdin.write(string.encode('utf8'))
+        self.p.stdin.write(unicode(string).encode('utf8'))
 
     def writeline(self, string=u''):
         self.write(string)
@@ -36,14 +36,16 @@ class LessPipe:
 Translation = namedtuple('Translation', ['word', 'translation_items'])
 Translated = namedtuple('Translated', ['value', 'part_of_speech'])
 TranslationItem = namedtuple('TranslationItem', ['group', 'words'])
+Link = namedtuple('Link', ['description', 'url'])
 
 
 class Word:
-    def __init__(self, value, context=None, comment=None, author=None):
+    def __init__(self, value, context=None, comment=None, author=None, link=None):
         self.value = value
         self.context = context
         self.comment = comment
         self.author = author
+        self.link = link
 
     def __unicode__(self):
         result = self.value
@@ -53,6 +55,8 @@ class Word:
             result += u' /* ' + self.comment.strip(u' ()') + u' */ '
         if self.author:
             result += u' @' + self.author
+        if self.link:
+            result += u' {' + self.link.description + u' (' + self.link.url + u')}'
         return result
 
 
@@ -81,23 +85,27 @@ class Mltran:
         return Translated(row.find('td[@bgcolor]/a[1]').text, row.find('td[@bgcolor]/em').text)
 
     @staticmethod
-    def get_group(row):
-        return row.find('td[1]/a').get('title')
+    def get_category(row):
+        return row.find('td[1]/a').get('title') or row.find('td[1]/a/i').text  # if first == None return second
 
     @staticmethod
-    def get_translations(row):
-        value = context = comment = author = None
+    def get_word_translations(row):
+        value = context = comment = author = link = None
         words = []
         for elem in row.xpath('td[2]//*'):
+            if elem.find('tr/td[@bgcolor]') is not None:
+                if value:
+                    words.append(Word(value, context, comment, author, link))
+                return words
             if elem.tag == 'a':
                 if '&&UserName=' in elem.get('href'):
                     author = elem.find('i').text
                 elif elem.get('target') == '_blank':
-                    pass
+                    link = Link(description=elem.find('i').text, url=elem.get('href'))
                 else:
                     if value:
-                        words.append(Word(value, context, comment, author))
-                        context = comment = author = None
+                        words.append(Word(value, context, comment, author, link))
+                        context = comment = author = link = None
                     value = elem.text
 
             elif elem.tag == 'span' and elem.get('style') == 'color:gray':
@@ -105,7 +113,7 @@ class Mltran:
                 if text != ' (' and text != ')':
                     context = text
         if value:
-            words.append(Word(value, context, comment, author))
+            words.append(Word(value, context, comment, author, link))
         return words
 
     def results(self):
@@ -114,14 +122,14 @@ class Mltran:
 
         translated_word = None
         translation_items = []
-        for row in code.xpath(results_xpath)[0].iterchildren():
+        for row in code.xpath(results_xpath)[0].findall('.//tr'):
             if self.is_new_word_row(row):
                 if translated_word:
                     yield Translation(translated_word, translation_items)
                 translation_items = []
                 translated_word = self.get_translated_from_row(row)
             else:
-                translation_items.append(TranslationItem(self.get_group(row), self.get_translations(row)))
+                translation_items.append(TranslationItem(self.get_category(row), self.get_word_translations(row)))
         if translated_word:
             yield Translation(translated_word, translation_items)
 
@@ -133,11 +141,11 @@ def make_request(word):
         less.write(request.url() + '\n')
         for result in request.results():
 
-            less.write(u'===== {}, {} =====\n'.format(unicode(result.word.value, 'utf8'), result.word.part_of_speech))
+            less.write(u'===== {}, {} =====\n'.format(result.word.value, result.word.part_of_speech))
             for group in result.translation_items:
                 less.write(u'\tКатегория: {}\n'.format(group.group))
                 for translation in group.words:
-                    less.writeline(unicode(translation))
+                    less.writeline(translation)
                 less.writeline()
 
 
