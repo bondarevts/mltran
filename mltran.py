@@ -79,50 +79,46 @@ class LessPipe:
         self.p.wait()
 
 
-Translation = namedtuple('Translation', ['word', 'translation_items'])
-TranslationItem = namedtuple('TranslationItem', ['group', 'words'])
+Translation = namedtuple('Translation', ['word', 'categories'])
 Link = namedtuple('Link', ['description', 'url'])
 Comment = namedtuple('Comment', ['text', 'author'])
 
 
-class Translated:
+class TranslatedEntry:
     def __init__(self, value, part_of_speech, phonetic):
-        self.value = value
-        self.part_of_speech = part_of_speech
-        self.phonetic = phonetic
+        self.value, self.part_of_speech, self.phonetic = value, part_of_speech, phonetic
 
     def __unicode__(self):
-        result = u'====== ' + self.value
-        if self.phonetic:
-            result += u' ' + self.phonetic
-        if self.part_of_speech:
-            result += u' ' + self.part_of_speech
+        result = u'====== {}'.format(self.value)
+        result += u' {}'.format(self.phonetic) if self.phonetic else u''
+        result += u' {}'.format(self.part_of_speech) if self.part_of_speech is not None else u''
         result += u' ====='
         return result
 
 
-class Word:
+class Category:
+    def __init__(self, name, words):
+        self.name, self.words = name, words
+
+    def __unicode__(self):
+        result = u'\tКатегория: {}\n'.format(self.name)
+        result += u'\n'.join(unicode(translation) for translation in self.words)
+        return result
+
+
+class TranslationEntry:
     def __init__(self, value, prev_context=None, context=None, comment=None, author=None, link=None):
-        self.value = value
-        self.prev_context = prev_context
-        self.context = context
-        self.comment = comment
-        self.author = author
-        self.link = link
+        self.value, self.prev_context, self.context, self.comment, self.author, self.link = \
+            value, prev_context, context, comment, author, link
 
     def __unicode__(self):
         result = u''
-        if self.prev_context:
-            result += u'[' + self.prev_context.strip(u' ()') + u'] '
+        result += u'[{}] '.format(self.prev_context.strip(u' ()')) if self.prev_context else u''
         result += self.value
-        if self.context:
-            result += u' [' + self.context.strip(u' ()') + u']'
-        if self.comment:
-            result += u' /* ' + self.comment.text.strip(u' ()') + u' @' + self.comment.author + u' */'
-        if self.link:
-            result += u' {' + self.link.description + u' (' + self.link.url + u')}'
-        if self.author:
-            result += u' @' + self.author
+        result += u' [{}]'.format(self.context.strip(u' ()')) if self.context else u''
+        result += u' /* {} @{} */'.format(self.comment.text.strip(u' ()'), self.comment.author) if self.comment else u''
+        result += u' {{{} ({})}}'.format(self.link.description, self.link.url) if self.link else u''
+        result += u' @{}'.format(self.author) if self.author else u''
         return result
 
 
@@ -139,15 +135,15 @@ class Mltran:
     def url(self):
         return self.response.url
 
-    def text(self):
+    def _text(self):
         return self.response.text
 
     @staticmethod
-    def is_new_word_row(elem):
+    def _is_new_word_row(elem):
         return elem.find('td[@bgcolor]') is not None
 
     @staticmethod
-    def get_phonetic(row):
+    def _get_phonetic(row):
         result = u''
         for img in row.findall('td/img'):
             symbol = img.get('src')[5:-4]
@@ -159,89 +155,92 @@ class Mltran:
             return result
 
     @staticmethod
-    def get_translated_from_row(row):
+    def _get_translated_entry(row):
         value = row.find('td[@bgcolor]/a[1]').text
         part_of_speech = row.find('td[@bgcolor]//em')
-        if part_of_speech:
+        if part_of_speech is not None:
             part_of_speech = part_of_speech.text
-        phonetic = Mltran.get_phonetic(row)
-        return Translated(value, part_of_speech, phonetic)
+        phonetic = Mltran._get_phonetic(row)
+        return TranslatedEntry(value, part_of_speech, phonetic)
 
     @staticmethod
-    def get_category(row):
+    def _get_category(row):
         return row.find('td[1]/a').get('title') or row.find('td[1]/a/i').text  # if first == None return second
 
     @staticmethod
-    def extend_context(context, text):
+    def _extend_context(context, text):
         if context:
             return context + u'; ' + text
         return text
 
     @staticmethod
-    def get_word_translations(row):
+    def _update_context(context, prev_context, element, value):
+        text = element.text
+        if text != ' (' and text != ')':
+            if value:
+                context = Mltran._extend_context(context, text)
+            else:
+                prev_context = Mltran._extend_context(prev_context, text)
+        return context, prev_context
+
+    @staticmethod
+    def _get_translation_entries(row):
         value = prev_context = context = comment = author = link = None
-        words = []
-        for elem in row.xpath('td[2]//*'):
-            if elem.find('tr/td[@bgcolor]') is not None:
+        entries = []
+        for element in row.xpath('td[2]//*'):
+            if element.find('tr/td[@bgcolor]') is not None:
                 break
-            if elem.tag == 'a':
-                if not comment and '&&UserName=' in elem.get('href'):
-                    author = elem.find('i').text
-                elif elem.get('target') == '_blank':
-                    link = Link(description=elem.find('i').text, url=elem.get('href'))
+            if element.tag == 'a':
+                if not comment and '&&UserName=' in element.get('href'):
+                    author = element.find('i').text
+                elif element.get('target') == '_blank':
+                    link = Link(description=element.find('i').text, url=element.get('href'))
                 else:
                     if value:
-                        words.append(Word(value, prev_context, context, comment, author, link))
+                        entries.append(TranslationEntry(value, prev_context, context, comment, author, link))
                         prev_context = context = comment = author = link = None
-                    value = elem.text
+                    value = element.text
 
-            elif elem.tag == 'span':
-                if elem.get('style') == 'color:gray':
-                    text = elem.text
-                    if text != ' (' and text != ')':
-                        if value:
-                            context = Mltran.extend_context(context, text)
-                        else:
-                            prev_context = Mltran.extend_context(prev_context, text)
-                elif elem.get('style') == 'color:black' and elem.text == ';  ':
+            elif element.tag == 'span':
+                if element.get('style') == 'color:gray':
+                    context, prev_context = Mltran._update_context(context, prev_context, element, value)
+                elif element.get('style') == 'color:black' and element.text == ';  ':
                     if value:
-                        words.append(Word(value, prev_context, context, comment, author, link))
+                        entries.append(TranslationEntry(value, prev_context, context, comment, author, link))
                         value = prev_context = context = comment = author = link = None
-                elif elem.get('style') == 'color:rgb(60, 179, 113)':
-                    comment = Comment(elem.text, elem.find('a/i').text)
+                elif element.get('style') == 'color:rgb(60, 179, 113)':
+                    comment = Comment(element.text, element.find('a/i').text)
         if value:
-            words.append(Word(value, prev_context, context, comment, author, link))
-        return words
+            entries.append(TranslationEntry(value, prev_context, context, comment, author, link))
+        return entries
 
     def results(self):
-        code = etree.HTML(self.text())
+        code = etree.HTML(self._text())
         results_xpath = '/html/body/table/tr/td[2]/table/tr/td/table/tr[2]/td/table/tr/td[2]/table[2]'
 
         translated_word = None
-        translation_items = []
+        categories = []
         for row in code.xpath(results_xpath)[0].findall('.//tr'):
-            if self.is_new_word_row(row):
+            if self._is_new_word_row(row):
                 if translated_word:
-                    yield Translation(translated_word, translation_items)
-                translation_items = []
-                translated_word = self.get_translated_from_row(row)
+                    yield Translation(translated_word, categories)
+                categories = []
+                translated_word = self._get_translated_entry(row)
             else:
-                translation_items.append(TranslationItem(self.get_category(row), self.get_word_translations(row)))
+                categories.append(Category(self._get_category(row), self._get_translation_entries(row)))
         if translated_word:
-            yield Translation(translated_word, translation_items)
+            yield Translation(translated_word, categories)
 
 
 def make_request(word):
     request = Mltran(word, log=False)
-    print(request.url())
+    print('url: ' + request.url())
     with contextlib.closing(LessPipe()) as less:
-        less.write(request.url() + '\n')
+        less.write('url: ' + request.url() + '\n')
         for result in request.results():
             less.writeline(result.word)
-            for group in result.translation_items:
-                less.write(u'\tКатегория: {}\n'.format(group.group))
-                for translation in group.words:
-                    less.writeline(translation)
+            for category in result.categories:
+                less.writeline(category)
                 less.writeline()
 
 
@@ -251,7 +250,10 @@ def main():
         exit(0)
 
     word = ' '.join(sys.argv[1:])
-    make_request(word)
+    try:
+        make_request(word)
+    except requests.ConnectionError:
+        print('Network error! Check your internet connection and try again.')
 
 
 if __name__ == '__main__':
