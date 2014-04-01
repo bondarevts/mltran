@@ -159,7 +159,7 @@ class Mltran:
     @staticmethod
     def get_translated_from_row(row):
         value = row.find('td[@bgcolor]/a[1]').text
-        part_of_speech = row.find('td[@bgcolor]/em').text
+        part_of_speech = row.find('td[@bgcolor]//em').text
         phonetic = Mltran.get_phonetic(row)
         return Translated(value, part_of_speech, phonetic)
 
