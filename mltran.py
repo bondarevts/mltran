@@ -95,7 +95,9 @@ class Translated:
         result = u'====== ' + self.value
         if self.phonetic:
             result += u' ' + self.phonetic
-        result += u' ' + self.part_of_speech + u' ====='
+        if self.part_of_speech:
+            result += u' ' + self.part_of_speech
+        result += u' ====='
         return result
 
 
@@ -159,7 +161,9 @@ class Mltran:
     @staticmethod
     def get_translated_from_row(row):
         value = row.find('td[@bgcolor]/a[1]').text
-        part_of_speech = row.find('td[@bgcolor]//em').text
+        part_of_speech = row.find('td[@bgcolor]//em')
+        if part_of_speech:
+            part_of_speech = part_of_speech.text
         phonetic = Mltran.get_phonetic(row)
         return Translated(value, part_of_speech, phonetic)
 
