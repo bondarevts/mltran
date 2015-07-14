@@ -266,7 +266,10 @@ def main():
     else: 
         lang = 'en'
         word = ' '.join(sys.argv[1:])
-    word = word.decode('utf8').encode('cp1251')
+    try:
+        word = word.decode('utf8').encode('cp1251')
+    except UnicodeEncodeError:
+        word = word.decode('utf8').encode('ascii', 'xmlcharrefreplace')
 
     try:
         make_request(word, lang)
