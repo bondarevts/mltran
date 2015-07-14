@@ -60,6 +60,14 @@ phonetic_alphabet = {
 }
 
 
+langs = {
+    'it': 23,
+    'de': 3,
+    'fr': 4,
+    'en': 1
+}
+
+
 class LessPipe:
     def __init__(self):
         self.p = Popen('less', stdin=PIPE)
@@ -123,13 +131,16 @@ class TranslationEntry:
 
 
 class Mltran:
-    def __init__(self, word, log=True, log_filename='unsorted_queries.txt'):
+    def __init__(self, word, log=True, log_filename='unsorted_queries.txt', lang='en'):
         if log:
             with open(log_filename, mode='a') as query_store:
                 query_store.write(word + '\n')
 
         request_address = 'http://www.multitran.ru/c/m.exe'
-        self.response = requests.get(request_address, params={'s': word})
+        self.response = requests.get(request_address, params={
+            's': word,
+            'l1': langs[lang]
+        })
         self.response.encoding = 'cp1251'
 
     def url(self):
@@ -232,8 +243,8 @@ class Mltran:
             yield Translation(translated_word, categories)
 
 
-def make_request(word):
-    request = Mltran(word, log=False)
+def make_request(word, lang):
+    request = Mltran(word, log=False, lang=lang)
     print('url: ' + request.url())
     with contextlib.closing(LessPipe()) as less:
         less.write('url: ' + request.url() + '\n')
@@ -249,9 +260,16 @@ def main():
         print("Usage:\n\t" + sys.argv[0] + " <word>")
         exit(0)
 
-    word = ' '.join(sys.argv[1:])
+    if len(sys.argv) > 2 and sys.argv[1].startswith('-'):
+        lang = sys.argv[1][1:].lower()
+        word = ' '.join(sys.argv[2:])
+    else: 
+        lang = 'en'
+        word = ' '.join(sys.argv[1:])
+    word = word.decode('utf8').encode('cp1251')
+
     try:
-        make_request(word)
+        make_request(word, lang)
     except requests.ConnectionError:
         print('Network error! Check your internet connection and try again.')
 
