@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import io
 import sys
 import contextlib
 from collections import namedtuple
@@ -64,23 +65,11 @@ languages = {
 }
 
 
-class LessPipe:
-    def __init__(self):
-        self.p = Popen('less', stdin=PIPE)
-
-    def writelines(self, strings):
-        self.write('\n'.join(strings))
-
-    def write(self, string):
-        self.p.stdin.write(str(string).encode())
-
-    def writeline(self, string=''):
-        self.write(string)
-        self.write('\n')
-
-    def close(self):
-        self.p.stdin.close()
-        self.p.wait()
+def print_to_less(message):
+    pipe = Popen('less', stdin=PIPE)
+    pipe.stdin.write(message.encode())
+    pipe.stdin.close()
+    pipe.wait()
 
 
 Translation = namedtuple('Translation', ['word', 'categories'])
@@ -243,6 +232,15 @@ class Mltran:
             yield Translation(translated_word, categories)
 
 
+def print_request_result(response):
+    print('url: {}'.format(response.url))
+    for result in response.results():
+        print(result.word)
+        for category in result.categories:
+            print(category)
+            print()
+
+
 @click.command()
 @click.argument('words', nargs=-1, required=True)
 @click.option('--lang', '-l', default='en', help='Translation language',
@@ -257,14 +255,10 @@ def make_request(words, lang):
     phrase = ' '.join(words)
     request = Mltran(phrase, lang)
     print('url: ' + request.url)
-
-    with contextlib.closing(LessPipe()) as less:
-        less.writeline('url: {}'.format(request.url))
-        for result in request.results():
-            less.writeline(result.word)
-            for category in result.categories:
-                less.writeline(category)
-                less.writeline()
+    result_screen = io.StringIO()
+    with contextlib.redirect_stdout(result_screen):
+        print_request_result(request)
+    print_to_less(result_screen.getvalue())
 
 
 if __name__ == '__main__':
