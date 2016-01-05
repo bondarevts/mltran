@@ -10,53 +10,49 @@ import click
 from lxml import etree
 
 
-def xml_element_to_string(elem):
-    return etree.tostring(elem, pretty_print=True, method="html", encoding='unicode')
-
-
 phonetic_alphabet = {
-    u'[': u'[',
-    u']': u']',
-    u'34': u'\u02cf',
-    u'39': u'\u00b4',
-    u'40': u'(',
-    u'41': u')',
-    u'58': u':',
-    u'65': u'\u028c',
-    u'68': u'\u00f0',
-    u'69': u'\u025c',
-    u'73': u'\u026a',
-    u'78': u'\u014b',
-    u'79': u'\u0254',
-    u'80': u'\u0252',
-    u'81': u'\u0251',
-    u'83': u'\u0283',
-    u'84': u'\u0275',  # ? u'\u0298'
-    u'86': u'\u028b',
-    u'90': u'\u0292',
-    u'97': u'a',
-    u'98': u'b',
-    u'100': u'd',
-    u'101': u'e',
-    u'102': u'f',
-    u'103': u'g',
-    u'104': u'h',
-    u'105': u'i',
-    u'106': u'j',
-    u'107': u'k',
-    u'108': u'l',
-    u'109': u'm',
-    u'110': u'n',
-    u'112': u'p',
-    u'113': u'\u0259',
-    u'114': u'r',
-    u'115': u's',
-    u'116': u't',
-    u'117': u'u',
-    u'118': u'v',
-    u'119': u'w',
-    u'120': u'\u00e6',
-    u'122': u'z'
+    '[': '[',
+    ']': ']',
+    '34': '\u02cf',
+    '39': '\u00b4',
+    '40': '(',
+    '41': ')',
+    '58': ':',
+    '65': '\u028c',
+    '68': '\u00f0',
+    '69': '\u025c',
+    '73': '\u026a',
+    '78': '\u014b',
+    '79': '\u0254',
+    '80': '\u0252',
+    '81': '\u0251',
+    '83': '\u0283',
+    '84': '\u0275',  # ? '\u0298'
+    '86': '\u028b',
+    '90': '\u0292',
+    '97': 'a',
+    '98': 'b',
+    '100': 'd',
+    '101': 'e',
+    '102': 'f',
+    '103': 'g',
+    '104': 'h',
+    '105': 'i',
+    '106': 'j',
+    '107': 'k',
+    '108': 'l',
+    '109': 'm',
+    '110': 'n',
+    '112': 'p',
+    '113': '\u0259',
+    '114': 'r',
+    '115': 's',
+    '116': 't',
+    '117': 'u',
+    '118': 'v',
+    '119': 'w',
+    '120': '\u00e6',
+    '122': 'z'
 }
 
 
@@ -78,9 +74,9 @@ class LessPipe:
     def write(self, string):
         self.p.stdin.write(str(string).encode())
 
-    def writeline(self, string=u''):
+    def writeline(self, string=''):
         self.write(string)
-        self.write(u'\n')
+        self.write('\n')
 
     def close(self):
         self.p.stdin.close()
@@ -97,10 +93,10 @@ class TranslatedEntry:
         self.value, self.part_of_speech, self.phonetic = value, part_of_speech, phonetic
 
     def __str__(self):
-        result = u'====== {}'.format(self.value)
-        result += u' {}'.format(self.phonetic) if self.phonetic else u''
-        result += u' {}'.format(self.part_of_speech) if self.part_of_speech is not None else u''
-        result += u' ====='
+        result = '====== {}'.format(self.value)
+        result += ' {}'.format(self.phonetic) if self.phonetic else ''
+        result += ' {}'.format(self.part_of_speech) if self.part_of_speech is not None else ''
+        result += ' ====='
         return result
 
 
@@ -109,45 +105,48 @@ class Category:
         self.name, self.words = name, words
 
     def __str__(self):
-        result = u'\tКатегория: {}\n'.format(self.name)
-        result += u'\n'.join(str(translation) for translation in self.words)
+        result = '\tКатегория: {}\n'.format(self.name)
+        result += '\n'.join(str(translation) for translation in self.words)
         return result
 
 
 class TranslationEntry:
-    def __init__(self, value, prev_context=None, context=None, comment=None, author=None, link=None):
-        self.value, self.prev_context, self.context, self.comment, self.author, self.link = \
-            value, prev_context, context, comment, author, link
+    def __init__(self, value, prev_context=None, context=None,
+                 comment=None, author=None, link=None):
+        self.value, self.prev_context, self.context, self.comment, self.author, self.link = (
+            value, prev_context, context, comment, author, link)
 
     def __str__(self):
-        result = u''
-        result += u'[{}] '.format(self.prev_context.strip(u' ()')) if self.prev_context else u''
+        result = ''
+        result += '[{}] '.format(self.prev_context.strip(' ()')) if self.prev_context else ''
         result += self.value
-        result += u' [{}]'.format(self.context.strip(u' ()')) if self.context else u''
-        result += u' /* {} @{} */'.format(self.comment.text.strip(u' ()'), self.comment.author) if self.comment else u''
-        result += u' {{{} ({})}}'.format(self.link.description, self.link.url) if self.link else u''
-        result += u' @{}'.format(self.author) if self.author else u''
+        result += ' [{}]'.format(self.context.strip(' ()')) if self.context else ''
+        result += ' /* {} @{} */'.format(self.comment.text.strip(' ()'), self.comment.author) if self.comment else ''
+        result += ' {{{} ({})}}'.format(self.link.description, self.link.url) if self.link else ''
+        result += ' @{}'.format(self.author) if self.author else ''
         return result
 
 
 class Mltran:
-    def __init__(self, word, log=True, log_filename='unsorted_queries.txt', lang='en'):
-        if log:
-            with open(log_filename, mode='a') as query_store:
-                query_store.write(word + '\n')
+    def __init__(self, phrase, lang='en'):
+        try:
+            phrase = phrase.encode('cp1251')
+        except UnicodeEncodeError:
+            phrase = phrase.encode('ascii', 'xmlcharrefreplace')
 
         request_address = 'http://www.multitran.ru/c/m.exe'
-        self.response = requests.get(request_address, params={
-            's': word,
+        self._response = requests.get(request_address, params={
+            's': phrase,
             'l1': languages[lang]
         })
-        self.response.encoding = 'cp1251'
+        self._response.encoding = 'cp1251'
 
+    @property
     def url(self):
-        return self.response.url
+        return self._response.url
 
     def _text(self):
-        return self.response.text
+        return self._response.text
 
     @staticmethod
     def _is_new_word_row(elem):
@@ -155,7 +154,7 @@ class Mltran:
 
     @staticmethod
     def _get_phonetic(row):
-        result = u''
+        result = ''
         for img in row.findall('td/img'):
             symbol = img.get('src')[5:-4]
             if symbol in phonetic_alphabet:
@@ -176,12 +175,13 @@ class Mltran:
 
     @staticmethod
     def _get_category(row):
-        return row.find('td[1]/a').get('title') or row.find('td[1]/a/i').text  # if first == None return second
+        # if first == None return second
+        return row.find('td[1]/a').get('title') or row.find('td[1]/a/i').text
 
     @staticmethod
     def _extend_context(context, text):
         if context:
-            return context + u'; ' + text
+            return context + '; ' + text
         return text
 
     @staticmethod
@@ -250,15 +250,16 @@ class Mltran:
 @click.help_option('-h', '--help')
 def make_request(words, lang):
     """ Translate word to/from language with multitran.ru """
+
+    # TODO add block less pipe mode
+    # TODO add queries logging parameter
+
     phrase = ' '.join(words)
-    try:
-        phrase = phrase.encode('cp1251')
-    except UnicodeEncodeError:
-        phrase = phrase.encode('ascii', 'xmlcharrefreplace')
-    request = Mltran(phrase, log=False, lang=lang)
-    print('url: ' + request.url())
+    request = Mltran(phrase, lang)
+    print('url: ' + request.url)
+
     with contextlib.closing(LessPipe()) as less:
-        less.write('url: ' + request.url() + '\n')
+        less.writeline('url: {}'.format(request.url))
         for result in request.results():
             less.writeline(result.word)
             for category in result.categories:
