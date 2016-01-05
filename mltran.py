@@ -1,13 +1,13 @@
 #!/usr/bin/env python
-# -*- coding: utf8 -*-
 
 import sys
-import requests
 import contextlib
-
-from lxml import etree
-from subprocess import Popen, PIPE
 from collections import namedtuple
+from subprocess import Popen, PIPE
+
+import requests
+import click
+from lxml import etree
 
 
 def xml_element_to_string(elem):
@@ -60,7 +60,7 @@ phonetic_alphabet = {
 }
 
 
-langs = {
+languages = {
     'it': 23,
     'de': 3,
     'fr': 4,
@@ -76,7 +76,7 @@ class LessPipe:
         self.write('\n'.join(strings))
 
     def write(self, string):
-        self.p.stdin.write(unicode(string).encode('utf8'))
+        self.p.stdin.write(str(string).encode())
 
     def writeline(self, string=u''):
         self.write(string)
@@ -96,7 +96,7 @@ class TranslatedEntry:
     def __init__(self, value, part_of_speech, phonetic):
         self.value, self.part_of_speech, self.phonetic = value, part_of_speech, phonetic
 
-    def __unicode__(self):
+    def __str__(self):
         result = u'====== {}'.format(self.value)
         result += u' {}'.format(self.phonetic) if self.phonetic else u''
         result += u' {}'.format(self.part_of_speech) if self.part_of_speech is not None else u''
@@ -108,9 +108,9 @@ class Category:
     def __init__(self, name, words):
         self.name, self.words = name, words
 
-    def __unicode__(self):
+    def __str__(self):
         result = u'\tКатегория: {}\n'.format(self.name)
-        result += u'\n'.join(unicode(translation) for translation in self.words)
+        result += u'\n'.join(str(translation) for translation in self.words)
         return result
 
 
@@ -119,7 +119,7 @@ class TranslationEntry:
         self.value, self.prev_context, self.context, self.comment, self.author, self.link = \
             value, prev_context, context, comment, author, link
 
-    def __unicode__(self):
+    def __str__(self):
         result = u''
         result += u'[{}] '.format(self.prev_context.strip(u' ()')) if self.prev_context else u''
         result += self.value
@@ -139,7 +139,7 @@ class Mltran:
         request_address = 'http://www.multitran.ru/c/m.exe'
         self.response = requests.get(request_address, params={
             's': word,
-            'l1': langs[lang]
+            'l1': languages[lang]
         })
         self.response.encoding = 'cp1251'
 
@@ -243,8 +243,19 @@ class Mltran:
             yield Translation(translated_word, categories)
 
 
-def make_request(word, lang):
-    request = Mltran(word, log=False, lang=lang)
+@click.command()
+@click.argument('words', nargs=-1, required=True)
+@click.option('--lang', '-l', default='en', help='Translation language',
+              type=click.Choice(languages))
+@click.help_option('-h', '--help')
+def make_request(words, lang):
+    """ Translate word to/from language with multitran.ru """
+    phrase = ' '.join(words)
+    try:
+        phrase = phrase.encode('cp1251')
+    except UnicodeEncodeError:
+        phrase = phrase.encode('ascii', 'xmlcharrefreplace')
+    request = Mltran(phrase, log=False, lang=lang)
     print('url: ' + request.url())
     with contextlib.closing(LessPipe()) as less:
         less.write('url: ' + request.url() + '\n')
@@ -255,27 +266,5 @@ def make_request(word, lang):
                 less.writeline()
 
 
-def main():
-    if len(sys.argv) == 1:
-        print("Usage:\n\t" + sys.argv[0] + " <word>")
-        exit(0)
-
-    if len(sys.argv) > 2 and sys.argv[1].startswith('-'):
-        lang = sys.argv[1][1:].lower()
-        word = ' '.join(sys.argv[2:])
-    else: 
-        lang = 'en'
-        word = ' '.join(sys.argv[1:])
-    try:
-        word = word.decode('utf8').encode('cp1251')
-    except UnicodeEncodeError:
-        word = word.decode('utf8').encode('ascii', 'xmlcharrefreplace')
-
-    try:
-        make_request(word, lang)
-    except requests.ConnectionError:
-        print('Network error! Check your internet connection and try again.')
-
-
 if __name__ == '__main__':
-    main()
+    make_request()
