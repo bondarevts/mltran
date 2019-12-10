@@ -1,5 +1,4 @@
-#!/usr/bin/env python
-# -*- coding: utf8 -*-
+#!/usr/bin/env python3
 
 import sys
 import requests
@@ -10,61 +9,12 @@ from subprocess import Popen, PIPE
 from collections import namedtuple
 
 
-def xml_element_to_string(elem):
-    return etree.tostring(elem, pretty_print=True, method="html", encoding='unicode')
-
-
-phonetic_alphabet = {
-    u'[': u'[',
-    u']': u']',
-    u'34': u'\u02cf',
-    u'39': u'\u00b4',
-    u'40': u'(',
-    u'41': u')',
-    u'58': u':',
-    u'65': u'\u028c',
-    u'68': u'\u00f0',
-    u'69': u'\u025c',
-    u'73': u'\u026a',
-    u'78': u'\u014b',
-    u'79': u'\u0254',
-    u'80': u'\u0252',
-    u'81': u'\u0251',
-    u'83': u'\u0283',
-    u'84': u'\u0275',  # ? u'\u0298'
-    u'86': u'\u028b',
-    u'90': u'\u0292',
-    u'97': u'a',
-    u'98': u'b',
-    u'100': u'd',
-    u'101': u'e',
-    u'102': u'f',
-    u'103': u'g',
-    u'104': u'h',
-    u'105': u'i',
-    u'106': u'j',
-    u'107': u'k',
-    u'108': u'l',
-    u'109': u'm',
-    u'110': u'n',
-    u'112': u'p',
-    u'113': u'\u0259',
-    u'114': u'r',
-    u'115': u's',
-    u'116': u't',
-    u'117': u'u',
-    u'118': u'v',
-    u'119': u'w',
-    u'120': u'\u00e6',
-    u'122': u'z'
-}
-
-
 langs = {
-    'it': 23,
+    'en': 1,
+    'ru': 2,
     'de': 3,
     'fr': 4,
-    'en': 1
+    'it': 23,
 }
 
 
@@ -75,8 +25,8 @@ class LessPipe:
     def writelines(self, strings):
         self.write('\n'.join(strings))
 
-    def write(self, string):
-        self.p.stdin.write(unicode(string).encode('utf8'))
+    def write(self, string: str):
+        self.p.stdin.write(str(string).encode())
 
     def writeline(self, string=u''):
         self.write(string)
@@ -96,7 +46,7 @@ class TranslatedEntry:
     def __init__(self, value, part_of_speech, phonetic):
         self.value, self.part_of_speech, self.phonetic = value, part_of_speech, phonetic
 
-    def __unicode__(self):
+    def __str__(self):
         result = u'====== {}'.format(self.value)
         result += u' {}'.format(self.phonetic) if self.phonetic else u''
         result += u' {}'.format(self.part_of_speech) if self.part_of_speech is not None else u''
@@ -108,9 +58,9 @@ class Category:
     def __init__(self, name, words):
         self.name, self.words = name, words
 
-    def __unicode__(self):
+    def __str__(self):
         result = u'\tКатегория: {}\n'.format(self.name)
-        result += u'\n'.join(unicode(translation) for translation in self.words)
+        result += u'\n'.join(map(str, self.words))
         return result
 
 
@@ -119,7 +69,7 @@ class TranslationEntry:
         self.value, self.prev_context, self.context, self.comment, self.author, self.link = \
             value, prev_context, context, comment, author, link
 
-    def __unicode__(self):
+    def __str__(self):
         result = u''
         result += u'[{}] '.format(self.prev_context.strip(u' ()')) if self.prev_context else u''
         result += self.value
@@ -139,39 +89,27 @@ class Mltran:
         request_address = 'http://www.multitran.ru/c/m.exe'
         self.response = requests.get(request_address, params={
             's': word,
-            'l1': langs[lang]
+            'l1': langs[lang],
+            'l2': langs['ru'],
         })
-        self.response.encoding = 'cp1251'
+        self.response.encoding = 'utf-8'
+        self.response_text = self.response.text.replace('&nbsp;', ' ')
 
     def url(self):
         return self.response.url
 
-    def _text(self):
-        return self.response.text
-
     @staticmethod
     def _is_new_word_row(elem):
-        return elem.find('td[@bgcolor]') is not None
-
-    @staticmethod
-    def _get_phonetic(row):
-        result = u''
-        for img in row.findall('td/img'):
-            symbol = img.get('src')[5:-4]
-            if symbol in phonetic_alphabet:
-                result += phonetic_alphabet[symbol]
-            else:
-                sys.stderr.write('symbol ' + symbol + ' was not found in phonetic table')
-        if result:
-            return result
+        return elem.find('td[@class="gray"]') is not None
 
     @staticmethod
     def _get_translated_entry(row):
-        value = row.find('td[@bgcolor]/a[1]').text
-        part_of_speech = row.find('td[@bgcolor]//em')
-        if part_of_speech is not None:
-            part_of_speech = part_of_speech.text
-        phonetic = Mltran._get_phonetic(row)
+        row_data = row.find('td[@class="gray"]')
+        value = row_data.find('a[1]').text
+        part_of_speech = row_data.find('em').text
+        phonetic = row_data.find('span[@style="color:gray"]')
+        if phonetic is not None:
+            phonetic = phonetic.text
         return TranslatedEntry(value, part_of_speech, phonetic)
 
     @staticmethod
@@ -226,12 +164,14 @@ class Mltran:
         return entries
 
     def results(self):
-        code = etree.HTML(self._text())
-        results_xpath = '/html/body/table/tr/td[2]/table/tr/td/table/tr[2]/td/table/tr/td[2]/table[2]'
+        code = etree.HTML(self.response_text)
+        results_xpath = '//div[@class="middle_col"]/table[1]'
 
         translated_word = None
         categories = []
         for row in code.xpath(results_xpath)[0].findall('.//tr'):
+            if row.find('td[@class]') is None:
+                continue
             if self._is_new_word_row(row):
                 if translated_word:
                     yield Translation(translated_word, categories)
@@ -266,10 +206,11 @@ def main():
     else: 
         lang = 'en'
         word = ' '.join(sys.argv[1:])
+
     try:
-        word = word.decode('utf8').encode('cp1251')
+        word = word.encode('cp1251')
     except UnicodeEncodeError:
-        word = word.decode('utf8').encode('ascii', 'xmlcharrefreplace')
+        word = word.encode('ascii', 'xmlcharrefreplace')
 
     try:
         make_request(word, lang)
