@@ -1,221 +1,280 @@
 #!/usr/bin/env python3
 
+import dataclasses
 import sys
+from collections import deque
+from dataclasses import dataclass
+from typing import Iterable
+from typing import List
+from typing import Optional
+from typing import Union
+
 import requests
-import contextlib
-
 from lxml import etree
-from subprocess import Popen, PIPE
-from collections import namedtuple
 
+PATCH = True
 
-langs = {
+LANGUAGE_CODES = {
     'en': 1,
     'ru': 2,
-    'de': 3,
-    'fr': 4,
-    'it': 23,
 }
 
-
-class LessPipe:
-    def __init__(self):
-        self.p = Popen('less', stdin=PIPE)
-
-    def writelines(self, strings):
-        self.write('\n'.join(strings))
-
-    def write(self, string: str):
-        self.p.stdin.write(str(string).encode())
-
-    def writeline(self, string=u''):
-        self.write(string)
-        self.write(u'\n')
-
-    def close(self):
-        self.p.stdin.close()
-        self.p.wait()
+URL = 'http://www.multitran.ru/c/m.exe'
+TABLE_PATH = './/div[@class="middle_col"]/table[1]'
 
 
-Translation = namedtuple('Translation', ['word', 'categories'])
-Link = namedtuple('Link', ['description', 'url'])
-Comment = namedtuple('Comment', ['text', 'author'])
+@dataclass
+class Comment:
+    text: Optional[str] = None
+    author: Optional[str] = None
+
+    def __post_init__(self):
+        if self.text is not None:
+            self.text = self.text.lstrip('(').rstrip(')')
 
 
-class TranslatedEntry:
-    def __init__(self, value, part_of_speech, phonetic):
-        self.value, self.part_of_speech, self.phonetic = value, part_of_speech, phonetic
-
-    def __str__(self):
-        result = u'====== {}'.format(self.value)
-        result += u' {}'.format(self.phonetic) if self.phonetic else u''
-        result += u' {}'.format(self.part_of_speech) if self.part_of_speech is not None else u''
-        result += u' ====='
-        return result
+MeaningPart = Union[Comment, str]
 
 
-class Category:
-    def __init__(self, name, words):
-        self.name, self.words = name, words
+@dataclass
+class Meaning:
+    elements: List[MeaningPart] = dataclasses.field(default_factory=list)
 
-    def __str__(self):
-        result = u'\tКатегория: {}\n'.format(self.name)
-        result += u'\n'.join(map(str, self.words))
-        return result
+    def add_element(self, element: MeaningPart) -> None:
+        self.elements.append(element)
 
 
-class TranslationEntry:
-    def __init__(self, value, prev_context=None, context=None, comment=None, author=None, link=None):
-        self.value, self.prev_context, self.context, self.comment, self.author, self.link = \
-            value, prev_context, context, comment, author, link
-
-    def __str__(self):
-        result = u''
-        result += u'[{}] '.format(self.prev_context.strip(u' ()')) if self.prev_context else u''
-        result += self.value
-        result += u' [{}]'.format(self.context.strip(u' ()')) if self.context else u''
-        result += u' /* {} @{} */'.format(self.comment.text.strip(u' ()'), self.comment.author) if self.comment else u''
-        result += u' {{{} ({})}}'.format(self.link.description, self.link.url) if self.link else u''
-        result += u' @{}'.format(self.author) if self.author else u''
-        return result
+@dataclass
+class Topic:
+    short_name: Optional[str]
+    description: Optional[str]
+    meanings: List[Meaning]
 
 
-class Mltran:
-    def __init__(self, word, log=True, log_filename='unsorted_queries.txt', lang='en'):
-        if log:
-            with open(log_filename, mode='a') as query_store:
-                query_store.write(word + '\n')
+@dataclass
+class TranslationHeader:
+    word: str
+    word_class: Optional[str] = None
+    pronunciation: Optional[str] = None
+    word_prefix: Optional[str] = None
 
-        request_address = 'http://www.multitran.ru/c/m.exe'
-        self.response = requests.get(request_address, params={
-            's': word,
-            'l1': langs[lang],
-            'l2': langs['ru'],
+
+@dataclass
+class Translation:
+    header: TranslationHeader
+    topics: List[Topic]
+
+
+def show_translations(phrase: str) -> None:
+    translations = translate(phrase)
+    print_translations(translations)
+
+
+def translate(phrase: str) -> List[Translation]:
+    page_content = load_page(phrase)
+    return list(parse_translation_page(page_content))
+
+
+def load_page(phrase: str) -> str:
+    if PATCH:
+        import pickle, pathlib
+        response = pickle.loads(pathlib.Path('test.pickle').read_bytes())
+    else:
+        response = requests.get(URL, params={
+            's': phrase,
+            'l1': LANGUAGE_CODES['en'],
+            'l2': LANGUAGE_CODES['ru'],
         })
-        self.response.encoding = 'utf-8'
-        self.response_text = self.response.text.replace('&nbsp;', ' ')
 
-    def url(self):
-        return self.response.url
+        import pickle, pathlib
+        pathlib.Path('test.pickle').write_bytes(pickle.dumps(response))
 
-    @staticmethod
-    def _is_new_word_row(elem):
-        return elem.find('td[@class="gray"]') is not None
+    response.encoding = 'utf-8'
+    return response.text
 
-    @staticmethod
-    def _get_translated_entry(row):
-        row_data = row.find('td[@class="gray"]')
-        value = row_data.find('a[1]').text
-        part_of_speech = row_data.find('em').text
-        phonetic = row_data.find('span[@style="color:gray"]')
-        if phonetic is not None:
-            phonetic = phonetic.text
-        return TranslatedEntry(value, part_of_speech, phonetic)
 
-    @staticmethod
-    def _get_category(row):
-        return row.find('td[1]/a').get('title') or row.find('td[1]/a/i').text  # if first == None return second
+def parse_translation_page(page_content: str) -> Iterable[Translation]:
+    rows = deque(get_all_rows(page_content))
+    while rows and is_separator(rows.popleft()):
+        yield parse_translation(rows)
 
-    @staticmethod
-    def _extend_context(context, text):
-        if context:
-            return context + u'; ' + text
-        return text
 
-    @staticmethod
-    def _update_context(context, prev_context, element, value):
-        text = element.text
-        if text != ' (' and text != ')':
-            if value:
-                context = Mltran._extend_context(context, text)
-            else:
-                prev_context = Mltran._extend_context(prev_context, text)
-        return context, prev_context
+def get_all_rows(page_content: str) -> List[etree.Element]:
+    table = etree.HTML(page_content).find(TABLE_PATH)
+    return table.findall('tr')
 
-    @staticmethod
-    def _get_translation_entries(row):
-        value = prev_context = context = comment = author = link = None
-        entries = []
-        for element in row.xpath('td[2]//*'):
-            if element.find('tr/td[@bgcolor]') is not None:
-                break
-            if element.tag == 'a':
-                if not comment and '&&UserName=' in element.get('href'):
-                    author = element.find('i').text
-                elif element.get('target') == '_blank':
-                    link = Link(description=element.find('i').text, url=element.get('href'))
-                else:
-                    if value:
-                        entries.append(TranslationEntry(value, prev_context, context, comment, author, link))
-                        prev_context = context = comment = author = link = None
-                    value = element.text
 
-            elif element.tag == 'span':
-                if element.get('style') == 'color:gray':
-                    context, prev_context = Mltran._update_context(context, prev_context, element, value)
-                elif element.get('style') == 'color:black' and element.text == ';  ':
-                    if value:
-                        entries.append(TranslationEntry(value, prev_context, context, comment, author, link))
-                        value = prev_context = context = comment = author = link = None
-                elif element.get('style') == 'color:rgb(60, 179, 113)':
-                    comment = Comment(element.text, element.find('a/i').text)
-        if value:
-            entries.append(TranslationEntry(value, prev_context, context, comment, author, link))
-        return entries
+def is_separator(row):
+    return row.find('td[@class]') is None
 
-    def results(self):
-        code = etree.HTML(self.response_text)
-        results_xpath = '//div[@class="middle_col"]/table[1]'
 
-        translated_word = None
-        categories = []
-        for row in code.xpath(results_xpath)[0].findall('.//tr'):
-            if row.find('td[@class]') is None:
+def parse_translation(rows: deque) -> Translation:
+    return Translation(
+        header=parse_translation_header(rows.popleft()),
+        topics=parse_topics(rows),
+    )
+
+
+def parse_translation_header(row) -> TranslationHeader:
+    # the header has the following structure:
+    # <tr>
+    #   <td class="gray">
+    #     [<span style="color:gray"> WORD PREFIX </span>]
+    #     <a> TRANSLATED WORD </a>
+    #     [<span style="color:gray"> PRONUNCIATION </span>]
+    #     [<em> WORD CLASS </em>]
+    #     [<span class="small"> ... </span>]  # additional unused elements at the end of the header
+
+    translation_header_element = row.find('td[@class="gray"]')
+    assert translation_header_element is not None
+    header = TranslationHeader(word=translation_header_element.findtext('a'))
+
+    is_prefix = True
+    for element in translation_header_element:
+        if element.tag == 'a':
+            is_prefix = False
+            continue
+
+        if element.tag == 'span':
+            if is_prefix:
+                header.word_prefix = element.text
+                is_prefix = False
                 continue
-            if self._is_new_word_row(row):
-                if translated_word:
-                    yield Translation(translated_word, categories)
-                categories = []
-                translated_word = self._get_translated_entry(row)
-            else:
-                categories.append(Category(self._get_category(row), self._get_translation_entries(row)))
-        if translated_word:
-            yield Translation(translated_word, categories)
+
+            if element.get('style') == 'color:gray':
+                header.pronunciation = element.text
+                continue
+
+            if element.get('class') == 'small':
+                continue
+
+        if element.tag == 'em':
+            header.word_class = element.text
+            continue
+
+    return header
 
 
-def make_request(word, lang):
-    request = Mltran(word, log=False, lang=lang)
-    print('url: ' + request.url())
-    with contextlib.closing(LessPipe()) as less:
-        less.write('url: ' + request.url() + '\n')
-        for result in request.results():
-            less.writeline(result.word)
-            for category in result.categories:
-                less.writeline(category)
-                less.writeline()
+def parse_topics(rows: deque) -> List[Topic]:
+    topics = []
+    while rows:
+        row = rows.popleft()
+        if is_separator(row):
+            rows.appendleft(row)
+            break
+        topics.append(parse_topic(row))
+    return topics
 
 
-def main():
+def parse_topic(row) -> Topic:
+    # The topic has the following structure:
+    # <tr>
+    #   <td class="subj">
+    #     [<a title="TOPIC DESCRIPTION">TOPIC SHORT NAME</a>]
+    #   </td>
+    #   <td class="trans">
+    #      MEANINGS
+    # Important notes:
+    # * a topic header might be empty:
+    #   https://www.multitran.com/m.exe?s=%D0%B8%D0%B7%D0%BC%D0%B5%D0%BD%D1%8F%D1%8E%D1%89%D0%B0%D1%8F%D1%81%D1%8F+%D1%82%D0%B5%D0%BB%D0%B5%D0%B0%D0%BD%D0%B3%D0%B8%D0%BE%D1%8D%D0%BA%D1%82%D0%B0%D1%82%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B0%D1%8F+%D0%B0%D1%82%D0%B0%D0%BA%D1%81%D0%B8%D1%8F&l1=1&l2=2
+    topic_element, meanings_element = row
+    assert topic_element.get('class') == 'subj'
+    assert meanings_element.get('class') == 'trans'
+    topic_link = topic_element.find('a')
+    return Topic(
+        short_name=topic_link.text if topic_link is not None else None,
+        description=topic_link.get('title') if topic_link is not None else None,
+        meanings=list(parse_meanings(meanings_element)),
+    )
+
+
+def parse_meanings(meanings_element) -> Iterable[Meaning]:
+    # Meanings have the following structure:
+    # <td>
+    #   [PRE COMMENT]
+    #   <a> MEANING </a>
+    #   [POST COMMENT]
+    #   "; "  # separator
+    #   ...   # other meanings
+    #
+    # Comments have the following structure:
+    # <span>
+    #   ([COMMENT]
+    #   [<i><a> AUTHOR </a></i>]
+    #   ")"
+    meaning = Meaning()
+    for element in meanings_element:
+        if element.tag == 'a':
+            meaning.add_element(element.text)
+
+        elif element.tag == 'span':
+            comment_text = element.text
+            if comment_text == '(':
+                comment_text = None
+
+            author = None
+            if (author_element := element.find('i/a')) is not None:
+                author = author_element.text
+
+            meaning.add_element(Comment(comment_text, author=author))
+
+        if element.tail == '; ':
+            assert meaning.elements
+            yield meaning
+            meaning = Meaning()
+    yield meaning
+
+
+def print_translations(translations: List[Translation]) -> None:
+    for t in translations:
+        header = (t.header.word, t.header.pronunciation, t.header.word_class)
+        print(f' {" ".join(value for value in header if value is not None)} '.center(50, '='))
+        print_topics(t.topics)
+
+
+def print_topics(topics: List[Topic]) -> None:
+    for topic in topics:
+        if topic.short_name is None and topic.description is None:
+            print('\tБез категории:')
+        else:
+            print(f'\tКатегория: {topic.short_name} ({topic.description})')
+        for meaning in topic.meanings:
+            print(format_meaning_in_topic(meaning))
+        print()
+
+
+def format_meaning_in_topic(meaning: Meaning) -> str:
+    parts = []
+    for element in meaning.elements:
+        if isinstance(element, Comment):
+            parts.append(format_comment(element))
+        elif isinstance(element, str):
+            parts.append(element)
+        else:
+            raise Exception('Unknown element', element)
+    return ' '.join(parts)
+
+
+def format_comment(comment: Comment) -> str:
+    parts = []
+    if comment.text is not None:
+        parts.append(f'{comment.text}')
+    if comment.author is not None:
+        parts.append(f'@{comment.author}')
+    return f'[{" ".join(parts)}]'
+
+
+def main() -> None:
     if len(sys.argv) == 1:
-        print("Usage:\n\t" + sys.argv[0] + " <word>")
-        exit(0)
+        print(f'Usage:\n\t{sys.argv[0]} <phrase>')
+        return
 
-    if len(sys.argv) > 2 and sys.argv[1].startswith('-'):
-        lang = sys.argv[1][1:].lower()
-        word = ' '.join(sys.argv[2:])
-    else: 
-        lang = 'en'
-        word = ' '.join(sys.argv[1:])
+    phrase = ' '.join(sys.argv[1:])
 
     try:
-        word = word.encode('cp1251')
-    except UnicodeEncodeError:
-        word = word.encode('ascii', 'xmlcharrefreplace')
-
-    try:
-        make_request(word, lang)
+        show_translations(phrase)
     except requests.ConnectionError:
-        print('Network error! Check your internet connection and try again.')
+        print('Network error! Check your internet connection and try again.', file=sys.stderr)
 
 
 if __name__ == '__main__':
