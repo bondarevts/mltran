@@ -12,7 +12,7 @@ from typing import Union
 import requests
 from lxml import etree
 
-PATCH = True
+PATCH = False
 
 LANGUAGE_CODES = {
     'en': 1,
