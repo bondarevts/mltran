@@ -227,9 +227,17 @@ def parse_meanings(meanings_element) -> Iterable[Meaning]:
 
 def print_translations(translations: List[Translation]) -> None:
     for t in translations:
-        header = (t.header.word, t.header.pronunciation, t.header.word_class)
-        print(f' {" ".join(value for value in header if value is not None)} '.center(50, '='))
+        print_translation_header(t.header)
         print_topics(t.topics)
+
+
+def print_translation_header(header: TranslationHeader):
+    parts = []
+    if header.word_prefix is not None:
+        parts.append(f'[{header.word_prefix}]')
+    parts.append(header.word + ':')
+    parts.extend((header.pronunciation, header.word_class))
+    print(f' {" ".join(value for value in parts if value is not None)} '.center(60, '='))
 
 
 def print_topics(topics: List[Topic]) -> None:
