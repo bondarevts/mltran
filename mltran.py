@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-
+import contextlib
 import dataclasses
+import io
 import sys
 from collections import deque
 from dataclasses import dataclass
+from subprocess import PIPE
+from subprocess import Popen
 from typing import Iterable
 from typing import List
 from typing import Optional
@@ -272,6 +275,21 @@ def format_comment(comment: Comment) -> str:
     return f'[{" ".join(parts)}]'
 
 
+@contextlib.contextmanager
+def less_utility_pagination():
+    result_screen = io.StringIO()
+    with contextlib.redirect_stdout(result_screen):
+        yield
+    print_to_less(result_screen.getvalue())
+
+
+def print_to_less(message):
+    pipe = Popen('less', stdin=PIPE)
+    pipe.stdin.write(message.encode())
+    pipe.stdin.close()
+    pipe.wait()
+
+
 def main() -> None:
     if len(sys.argv) == 1:
         print(f'Usage:\n\t{sys.argv[0]} <phrase>')
@@ -280,7 +298,8 @@ def main() -> None:
     phrase = ' '.join(sys.argv[1:])
 
     try:
-        show_translations(phrase)
+        with less_utility_pagination():
+            show_translations(phrase)
     except requests.ConnectionError:
         print('Network error! Check your internet connection and try again.', file=sys.stderr)
 
