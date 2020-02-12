@@ -33,7 +33,7 @@ class Comment:
 
     def __post_init__(self):
         if self.text is not None:
-            self.text = self.text.lstrip('(').rstrip(')')
+            self.text = self.text.lstrip('(').rstrip(')').strip('\xa0 ')
 
 
 MeaningPart = Union[Comment, str]

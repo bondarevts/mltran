@@ -74,12 +74,14 @@ def test_meaning_author():
     ])
 
 
-def test_strip_comment_parenthesis():
+def test_strip_comment_parenthesis_and_extra_spaces():
     code = html.TD(
+        _comment(' comment\xa0'),
         _meaning('meaning'),
         _comment('(test)'),
     )
     assert_meaning(code, elements=[
+        Comment('comment'),
         'meaning',
         Comment('test'),
     ])
