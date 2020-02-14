@@ -27,13 +27,22 @@ TABLE_PATH = './/div[@class="middle_col"]/table[1]'
 
 
 @dataclass
+class Comment:
+    text: str
+    author: str
+
+
+@dataclass
 class Context:
     text: Optional[str] = None
     author: Optional[str] = None
+    comment: Optional[Comment] = None
 
     def __post_init__(self):
         if self.text is not None:
             self.text = self.text.lstrip('(').rstrip(')').strip('\xa0 ')
+            if not self.text:
+                self.text = None
 
 
 MeaningPart = Union[Context, str]
@@ -206,6 +215,11 @@ def parse_meanings(meanings_element) -> Iterable[Meaning]:
     #     <span>
     #       ([CONTEXT]
     #       [<i><a> AUTHOR </a></i>]
+    #       ["; "
+    #       <span style="color:rgb(60,179,113)">
+    #         COMMENT
+    #         <i><a> AUTHOR </a></i>
+    #       </span>
     #       ")"
     #     </span>
     meaning = Meaning()
@@ -214,21 +228,35 @@ def parse_meanings(meanings_element) -> Iterable[Meaning]:
             meaning.add_element(element.text)
 
         elif element.tag == 'span':
-            context_text = element.text
-            if context_text == '(':
-                context_text = None
-
-            author = None
-            if (author_element := element.find('i/a')) is not None:
-                author = author_element.text
-
-            meaning.add_element(Context(context_text, author=author))
+            meaning.add_element(parse_context(element))
 
         if element.tail == '; ':
             assert meaning.elements
             yield meaning
             meaning = Meaning()
     yield meaning
+
+
+def parse_context(element) -> Context:
+    assert element.tag == 'span'
+
+    context = Context(element.text, author=get_author(element))
+
+    if (comment_element := element.find('span[@style="color:rgb(60,179,113)"]')) is not None:
+        comment_text = comment_element.text
+        comment_author = get_author(comment_element)
+        assert comment_element is not None
+        assert comment_author is not None
+        context.comment = Comment(comment_text, comment_author)
+
+    return context
+
+
+def get_author(element) -> Optional[str]:
+    author = None
+    if (author_element := element.find('i/a')) is not None:
+        author = author_element.text
+    return author
 
 
 def print_translations(translations: List[Translation]) -> None:
@@ -275,6 +303,8 @@ def format_context(context: Context) -> str:
         parts.append(f'{context.text}')
     if context.author is not None:
         parts.append(f'@{context.author}')
+    if context.comment is not None:
+        parts.append(f'{{{context.comment.text} @{context.comment.author}}}')
     return f'[{" ".join(parts)}]'
 
 

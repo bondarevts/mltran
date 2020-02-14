@@ -1,5 +1,6 @@
 from lxml.html import builder as html
 
+from mltran import Comment
 from mltran import Context
 from mltran import Meaning
 from mltran import parse_meanings
@@ -7,13 +8,26 @@ from mltran import parse_meanings
 SEPARATOR = '; '
 
 
-def _context(value='(', author=None):
-    if author is None:
-        return html.SPAN(value)
+def _context(value='(', author=None, comment=None):
+    args = [value]
+
+    if author is not None:
+        args.append(_author(author))
+        args.append(')')
+
+    if comment is not None:
+        if args[-1] == ')':
+            args.insert(-1, _comment(*comment))
+        else:
+            args.append(_comment(*comment))
+    return html.SPAN(*args)
+
+
+def _comment(text, author):
     return html.SPAN(
-        value,
+        text,
         _author(author),
-        ')',
+        style='color:rgb(60,179,113)',
     )
 
 
@@ -97,4 +111,15 @@ def test_split_translation():
         'meaning start',
         Context('explanation'),
         'meaning end',
+    ])
+
+
+def test_comment():
+    code = html.TD(
+        _meaning('meaning'),
+        _context('context', comment=('comment', 'author'))
+    )
+    assert_meaning(code, elements=[
+        'meaning',
+        Context('context', comment=Comment('comment', 'author'))
     ])
