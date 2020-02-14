@@ -27,7 +27,7 @@ TABLE_PATH = './/div[@class="middle_col"]/table[1]'
 
 
 @dataclass
-class Comment:
+class Context:
     text: Optional[str] = None
     author: Optional[str] = None
 
@@ -36,7 +36,7 @@ class Comment:
             self.text = self.text.lstrip('(').rstrip(')').strip('\xa0 ')
 
 
-MeaningPart = Union[Comment, str]
+MeaningPart = Union[Context, str]
 
 
 @dataclass
@@ -194,32 +194,35 @@ def parse_topic(row) -> Topic:
 def parse_meanings(meanings_element) -> Iterable[Meaning]:
     # Meanings have the following structure:
     # <td>
-    #   [PRE COMMENT]
-    #   <a> MEANING </a>
-    #   [POST COMMENT]
+    #   {meaning elements}
     #   "; "  # separator
     #   ...   # other meanings
     #
-    # Comments have the following structure:
-    # <span>
-    #   ([COMMENT]
-    #   [<i><a> AUTHOR </a></i>]
-    #   ")"
+    # Meaning elements are the following:
+    #   Meaning value:
+    #     <a> MEANING </a>
+    #
+    #   Context:
+    #     <span>
+    #       ([CONTEXT]
+    #       [<i><a> AUTHOR </a></i>]
+    #       ")"
+    #     </span>
     meaning = Meaning()
     for element in meanings_element:
         if element.tag == 'a':
             meaning.add_element(element.text)
 
         elif element.tag == 'span':
-            comment_text = element.text
-            if comment_text == '(':
-                comment_text = None
+            context_text = element.text
+            if context_text == '(':
+                context_text = None
 
             author = None
             if (author_element := element.find('i/a')) is not None:
                 author = author_element.text
 
-            meaning.add_element(Comment(comment_text, author=author))
+            meaning.add_element(Context(context_text, author=author))
 
         if element.tail == '; ':
             assert meaning.elements
@@ -257,8 +260,8 @@ def print_topics(topics: List[Topic]) -> None:
 def format_meaning_in_topic(meaning: Meaning) -> str:
     parts = []
     for element in meaning.elements:
-        if isinstance(element, Comment):
-            parts.append(format_comment(element))
+        if isinstance(element, Context):
+            parts.append(format_context(element))
         elif isinstance(element, str):
             parts.append(element)
         else:
@@ -266,12 +269,12 @@ def format_meaning_in_topic(meaning: Meaning) -> str:
     return ' '.join(parts)
 
 
-def format_comment(comment: Comment) -> str:
+def format_context(context: Context) -> str:
     parts = []
-    if comment.text is not None:
-        parts.append(f'{comment.text}')
-    if comment.author is not None:
-        parts.append(f'@{comment.author}')
+    if context.text is not None:
+        parts.append(f'{context.text}')
+    if context.author is not None:
+        parts.append(f'@{context.author}')
     return f'[{" ".join(parts)}]'
 
 

@@ -1,13 +1,13 @@
 from lxml.html import builder as html
 
-from mltran import Comment
+from mltran import Context
 from mltran import Meaning
 from mltran import parse_meanings
 
 SEPARATOR = '; '
 
 
-def _comment(value='(', author=None):
+def _context(value='(', author=None):
     if author is None:
         return html.SPAN(value)
     return html.SPAN(
@@ -50,51 +50,51 @@ def test_parse_multiple_meanings():
     assert list(parse_meanings(code)) == [Meaning(['meaning1']), Meaning(['meaning2'])]
 
 
-def test_meaning_comments():
+def test_meaning_contexts():
     code = html.TD(
-        _comment('pre comment'),
+        _context('pre context'),
         _meaning('meaning'),
-        _comment('post comment'),
+        _context('post context'),
     )
     assert_meaning(code, elements=[
-        Comment('pre comment'),
+        Context('pre context'),
         'meaning',
-        Comment('post comment'),
+        Context('post context'),
     ])
 
 
 def test_meaning_author():
     code = html.TD(
         _meaning('meaning'),
-        _comment(author='author'),
+        _context(author='author'),
     )
     assert_meaning(code, elements=[
         'meaning',
-        Comment(author='author'),
+        Context(author='author'),
     ])
 
 
-def test_strip_comment_parenthesis_and_extra_spaces():
+def test_strip_context_parenthesis_and_extra_spaces():
     code = html.TD(
-        _comment(' comment\xa0'),
+        _context(' context\xa0'),
         _meaning('meaning'),
-        _comment('(test)'),
+        _context('(test)'),
     )
     assert_meaning(code, elements=[
-        Comment('comment'),
+        Context('context'),
         'meaning',
-        Comment('test'),
+        Context('test'),
     ])
 
 
 def test_split_translation():
     code = html.TD(
         _meaning('meaning start'),
-        _comment('explanation'),
+        _context('explanation'),
         _meaning('meaning end'),
     )
     assert_meaning(code, elements=[
         'meaning start',
-        Comment('explanation'),
+        Context('explanation'),
         'meaning end',
     ])
