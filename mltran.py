@@ -105,9 +105,15 @@ def load_page(phrase: str) -> str:
     return response.text
 
 
+def is_thesaurus_header_row(row):
+    return row.find('td[@class]') is None and row.find('td[@colspan]') is not None
+
+
 def parse_translation_page(page_content: str) -> Iterable[Translation]:
     rows = deque(get_all_rows(page_content))
     while rows and is_separator(rows.popleft()):
+        if is_thesaurus_header_row(rows[0]):
+            return  # do not process thesaurus entries for now.
         yield parse_translation(rows)
 
 
