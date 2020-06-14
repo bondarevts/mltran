@@ -128,14 +128,16 @@ def parse_translation(rows: deque) -> Translation:
 
 
 def parse_translation_header(row) -> TranslationHeader:
-    # the header has the following structure:
-    # <tr>
-    #   <td class="gray">
-    #     [<span style="color:gray"> WORD PREFIX </span>]
-    #     <a> TRANSLATED WORD </a>
-    #     [<span style="color:gray"> PRONUNCIATION </span>]
-    #     [<em> WORD CLASS </em>]
-    #     [<span class="small"> ... </span>]  # additional unused elements at the end of the header
+    """
+    the header has the following structure:
+    <tr>
+      <td class="gray">
+        [<span style="color:gray"> WORD PREFIX </span>]
+        <a> TRANSLATED WORD </a>
+        [<span style="color:gray"> PRONUNCIATION </span>]
+        [<em> WORD CLASS </em>]
+        [<span class="small"> ... </span>]  # additional unused elements at the end of the header
+    """
 
     translation_header_element = row.find('td[@class="gray"]')
     assert translation_header_element is not None
@@ -179,16 +181,18 @@ def parse_topics(rows: deque) -> List[Topic]:
 
 
 def parse_topic(row) -> Topic:
-    # The topic has the following structure:
-    # <tr>
-    #   <td class="subj">
-    #     [<a title="TOPIC DESCRIPTION">TOPIC SHORT NAME</a>]
-    #   </td>
-    #   <td class="trans">
-    #      MEANINGS
-    # Important notes:
-    # * a topic header might be empty:
-    #   https://www.multitran.com/m.exe?s=%D0%B8%D0%B7%D0%BC%D0%B5%D0%BD%D1%8F%D1%8E%D1%89%D0%B0%D1%8F%D1%81%D1%8F+%D1%82%D0%B5%D0%BB%D0%B5%D0%B0%D0%BD%D0%B3%D0%B8%D0%BE%D1%8D%D0%BA%D1%82%D0%B0%D1%82%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B0%D1%8F+%D0%B0%D1%82%D0%B0%D0%BA%D1%81%D0%B8%D1%8F&l1=1&l2=2
+    """
+    The topic has the following structure:
+    <tr>
+      <td class="subj">
+        [<a title="TOPIC DESCRIPTION">TOPIC SHORT NAME</a>]
+      </td>
+      <td class="trans">
+         MEANINGS
+    Important notes:
+    * a topic header might be empty:
+      https://www.multitran.com/m.exe?s=%D0%B8%D0%B7%D0%BC%D0%B5%D0%BD%D1%8F%D1%8E%D1%89%D0%B0%D1%8F%D1%81%D1%8F+%D1%82%D0%B5%D0%BB%D0%B5%D0%B0%D0%BD%D0%B3%D0%B8%D0%BE%D1%8D%D0%BA%D1%82%D0%B0%D1%82%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B0%D1%8F+%D0%B0%D1%82%D0%B0%D0%BA%D1%81%D0%B8%D1%8F&l1=1&l2=2
+    """
     topic_element, meanings_element = row
     assert topic_element.get('class') == 'subj'
     assert meanings_element.get('class') == 'trans'
@@ -201,27 +205,29 @@ def parse_topic(row) -> Topic:
 
 
 def parse_meanings(meanings_element) -> Iterable[Meaning]:
-    # Meanings have the following structure:
-    # <td>
-    #   {meaning elements}
-    #   "; "  # separator
-    #   ...   # other meanings
-    #
-    # Meaning elements are the following:
-    #   Meaning value:
-    #     <a> MEANING </a>
-    #
-    #   Context:
-    #     <span>
-    #       ([CONTEXT]
-    #       [<i><a> AUTHOR </a></i>]
-    #       ["; "
-    #       <span style="color:rgb(60,179,113)">
-    #         COMMENT
-    #         <i><a> AUTHOR </a></i>
-    #       </span>
-    #       ")"
-    #     </span>
+    """
+    Meanings have the following structure:
+    <td>
+      {meaning elements}
+      "; "  # separator
+      ...   # other meanings
+
+    Meaning elements are the following:
+      Meaning value:
+        <a> MEANING </a>
+
+      Context:
+        <span>
+          ([CONTEXT]
+          [<i><a> AUTHOR </a></i>]
+          ["; "
+          <span style="color:rgb(60,179,113)">
+            COMMENT
+            <i><a> AUTHOR </a></i>
+          </span>
+          ")"
+        </span>
+    """
     meaning = Meaning()
     for element in meanings_element:
         if element.tag == 'a':
